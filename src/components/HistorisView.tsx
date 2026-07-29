@@ -18,8 +18,14 @@ import {
   Tag, 
   Send,
   SlidersHorizontal,
-  ChevronRight
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
+
+type SortField = 'keyid' | 'tanggal' | 'jenis' | 'pengirim' | 'pihakterlibat' | 'metode' | 'tersampaikan';
+type SortDirection = 'asc' | 'desc';
 
 interface HistorisViewProps {
   items: PengaduanItem[];
@@ -52,9 +58,22 @@ export const HistorisView: React.FC<HistorisViewProps> = ({
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-  // Filter logic based on Requirement 2: keyid, tanggal, isi pesan, jenis, tersampaikan
+  // Sorting state - default newest first by tanggal
+  const [sortField, setSortField] = useState<SortField>('tanggal');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'tanggal' || field === 'keyid' ? 'desc' : 'asc');
+    }
+  };
+
+  // Filter and Sort logic
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
+    const filtered = items.filter((item) => {
       // 1. Key ID filter
       if (
         filters.keyid &&
@@ -116,7 +135,66 @@ export const HistorisView: React.FC<HistorisViewProps> = ({
 
       return true;
     });
-  }, [items, filters]);
+
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortField === 'tanggal') {
+        const timeA = new Date(a.tanggal).getTime();
+        const timeB = new Date(b.tanggal).getTime();
+        if (!isNaN(timeA) && !isNaN(timeB)) {
+          comparison = timeA - timeB;
+        } else {
+          comparison = a.tanggal.localeCompare(b.tanggal);
+        }
+        if (comparison === 0) {
+          comparison = a.keyid.localeCompare(b.keyid);
+        }
+      } else if (sortField === 'keyid') {
+        comparison = a.keyid.localeCompare(b.keyid);
+      } else if (sortField === 'jenis') {
+        comparison = a.jenis.localeCompare(b.jenis);
+      } else if (sortField === 'pengirim') {
+        const pA = `${a.pengirim} ${a.kelas}`;
+        const pB = `${b.pengirim} ${b.kelas}`;
+        comparison = pA.localeCompare(pB);
+      } else if (sortField === 'pihakterlibat') {
+        comparison = (a.pihakterlibat || '').localeCompare(b.pihakterlibat || '');
+      } else if (sortField === 'metode') {
+        comparison = a.metode.localeCompare(b.metode);
+      } else if (sortField === 'tersampaikan') {
+        comparison = a.tersampaikan.localeCompare(b.tersampaikan);
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [items, filters, sortField, sortDirection]);
+
+  const renderSortHeader = (field: SortField, label: string, alignCenter = false) => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleSort(field)}
+        className={`py-2.5 px-3 cursor-pointer select-none hover:bg-gray-200 transition-colors ${
+          alignCenter ? 'text-center' : ''
+        }`}
+        title={`Klik untuk mengurutkan berdasarkan ${label}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${alignCenter ? 'justify-center' : ''}`}>
+          <span>{label}</span>
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 opacity-60 hover:opacity-100 shrink-0" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   const handleResetFilters = () => {
     setFilters({
@@ -325,14 +403,14 @@ export const HistorisView: React.FC<HistorisViewProps> = ({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-gray-100 border-b border-gray-200 text-gray-500 font-bold uppercase text-[11px]">
-                <th className="py-2.5 px-3">KeyID</th>
-                <th className="py-2.5 px-3">Tanggal</th>
-                <th className="py-2.5 px-3">Jenis</th>
+                {renderSortHeader('keyid', 'KeyID')}
+                {renderSortHeader('tanggal', 'Tanggal')}
+                {renderSortHeader('jenis', 'Jenis')}
                 <th className="py-2.5 px-3">Pesan (Klik untuk detail)</th>
-                <th className="py-2.5 px-3">Pengirim / Kelas</th>
-                <th className="py-2.5 px-3">Pihak Terlibat</th>
-                <th className="py-2.5 px-3">Metode</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
+                {renderSortHeader('pengirim', 'Pengirim / Kelas')}
+                {renderSortHeader('pihakterlibat', 'Pihak Terlibat')}
+                {renderSortHeader('metode', 'Metode')}
+                {renderSortHeader('tersampaikan', 'Status', true)}
                 <th className="py-2.5 px-3 text-center">Aksi</th>
               </tr>
             </thead>

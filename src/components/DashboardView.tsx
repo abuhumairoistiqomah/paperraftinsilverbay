@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { PengaduanItem } from '../types';
 import { formatDateIndonesian } from '../utils/dateUtils';
 import { 
@@ -15,8 +15,14 @@ import {
   TrendingUp,
   MessageSquare,
   Building,
-  Radio
+  Radio,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
+
+type SortField = 'keyid' | 'tanggal' | 'jenis' | 'pengirim' | 'tersampaikan';
+type SortDirection = 'asc' | 'desc';
 
 interface DashboardViewProps {
   items: PengaduanItem[];
@@ -68,8 +74,76 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const topMetode = countByField((i) => i.metode);
   const topJenis = countByField((i) => i.jenis);
 
-  // Recent 5 entries
-  const recentItems = [...items].sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime()).slice(0, 5);
+  // Sorting state for Recent Records table - default newest first
+  const [sortField, setSortField] = useState<SortField>('tanggal');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'tanggal' || field === 'keyid' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'tanggal') {
+        const timeA = new Date(a.tanggal).getTime();
+        const timeB = new Date(b.tanggal).getTime();
+        if (!isNaN(timeA) && !isNaN(timeB)) {
+          comparison = timeA - timeB;
+        } else {
+          comparison = a.tanggal.localeCompare(b.tanggal);
+        }
+        if (comparison === 0) {
+          comparison = a.keyid.localeCompare(b.keyid);
+        }
+      } else if (sortField === 'keyid') {
+        comparison = a.keyid.localeCompare(b.keyid);
+      } else if (sortField === 'jenis') {
+        comparison = a.jenis.localeCompare(b.jenis);
+      } else if (sortField === 'pengirim') {
+        const pA = `${a.pengirim} ${a.kelas}`;
+        const pB = `${b.pengirim} ${b.kelas}`;
+        comparison = pA.localeCompare(pB);
+      } else if (sortField === 'tersampaikan') {
+        comparison = a.tersampaikan.localeCompare(b.tersampaikan);
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [items, sortField, sortDirection]);
+
+  // Recent 10 entries after sorting
+  const recentItems = sortedItems.slice(0, 10);
+
+  const renderSortHeader = (field: SortField, label: string, widthClass: string, alignCenter = false) => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleSort(field)}
+        className={`${widthClass} px-4 py-2 cursor-pointer select-none hover:bg-gray-200 transition-colors ${
+          alignCenter ? 'text-center' : ''
+        }`}
+        title={`Klik untuk mengurutkan berdasarkan ${label}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${alignCenter ? 'justify-center' : ''}`}>
+          <span>{label}</span>
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 opacity-60 hover:opacity-100 shrink-0" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -309,12 +383,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <table className="w-full text-left text-xs table-fixed">
             <thead>
               <tr className="bg-gray-100 border-b border-gray-200 text-gray-500 font-bold uppercase">
-                <th className="w-20 px-4 py-2">KeyID</th>
-                <th className="w-24 px-4 py-2">Tanggal</th>
-                <th className="w-20 px-4 py-2">Jenis</th>
+                {renderSortHeader('keyid', 'KeyID', 'w-24')}
+                {renderSortHeader('tanggal', 'Tanggal', 'w-28')}
+                {renderSortHeader('jenis', 'Jenis', 'w-20')}
                 <th className="px-4 py-2">Pesan (Klik untuk detail)</th>
-                <th className="w-32 px-4 py-2">Pengirim</th>
-                <th className="w-24 px-4 py-2 text-center">Status</th>
+                {renderSortHeader('pengirim', 'Pengirim', 'w-32')}
+                {renderSortHeader('tersampaikan', 'Status', 'w-24', true)}
                 <th className="w-16 px-4 py-2 text-center">Aksi</th>
               </tr>
             </thead>
