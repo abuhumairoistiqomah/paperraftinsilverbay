@@ -1,0 +1,6 @@
+{
+  "name": "Tracking Pengaduan Wakil Kurikulum",
+  "description": "Aplikasi pengawasan dan pengolahan masukan, saran, kritik, dan pengaduan untuk Wakil Kepala Sekolah Bidang Kurikulum dengan integrasi Google Spreadsheet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
