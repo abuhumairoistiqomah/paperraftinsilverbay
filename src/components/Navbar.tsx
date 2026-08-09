@@ -42,22 +42,22 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="bg-[#1F2937] text-white border-b border-gray-700 sticky top-0 z-30 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top Tier */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between py-3 gap-3 border-b border-gray-700/80">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2.5 rounded-lg text-white flex items-center justify-center shadow">
-              <FileSpreadsheet className="w-5 h-5" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between py-3 gap-4 border-b border-gray-700/80">
+          <div className="flex items-center gap-4">
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-white/10 p-1.5 rounded-2xl border border-white/25 flex items-center justify-center shadow-lg shrink-0 overflow-hidden hover:scale-105 transition-transform">
+              <img src="/logo.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black tracking-tight text-white">
-                  SI-KURIKULUM
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-black tracking-tight text-white">
+                  Paper Raft in Silver Bay
                 </h1>
                 <span className="text-[10px] uppercase tracking-widest bg-blue-500/20 text-blue-300 font-bold px-2 py-0.5 rounded border border-blue-500/30">
                   Dashboard Admin
                 </span>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Sistem Monitoring Masukan & Pengaduan Wakil Kurikulum
+              <p className="text-xs md:text-sm text-gray-300 mt-1 italic leading-relaxed max-w-2xl">
+                "To save live, you must first understand what they live for and what they die for. The best achieve this is through personal experience"
               </p>
             </div>
           </div>

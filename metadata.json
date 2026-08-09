@@ -1,6 +1,6 @@
 {
-  "name": "Tracking Pengaduan Wakil Kurikulum",
-  "description": "Aplikasi pengawasan dan pengolahan masukan, saran, kritik, dan pengaduan untuk Wakil Kepala Sekolah Bidang Kurikulum dengan integrasi Google Spreadsheet.",
+  "name": "Paper Raft in Silver Bay",
+  "description": "\"To save live, you must first understand what they live for and what they die for. The best achieve this is through personal experience\"",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

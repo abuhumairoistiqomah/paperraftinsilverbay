@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+    <linearGradient id="hairGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d0d9e5"/>
+      <stop offset="50%" stop-color="#b0bece"/>
+      <stop offset="100%" stop-color="#8a9ab0"/>
+    </linearGradient>
+    <linearGradient id="haloGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6e6670"/>
+      <stop offset="100%" stop-color="#413945"/>
+    </linearGradient>
+    <linearGradient id="groundGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#bda086"/>
+      <stop offset="100%" stop-color="#a08269"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Ground / Desk -->
+  <ellipse cx="250" cy="385" rx="180" ry="42" fill="url(#groundGrad)"/>
+
+  <!-- Halo / Crown Ring Structure Behind -->
+  <g filter="url(#shadow)" stroke="#2d2630" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Top Diamond Eye -->
+    <path d="M 250 25 L 268 75 L 250 125 L 232 75 Z" fill="url(#haloGrad)"/>
+    <ellipse cx="250" cy="75" rx="7" ry="12" fill="#d0d9e5"/>
+    
+    <!-- Left Crown Spoke -->
+    <path d="M 130 125 L 210 180 L 180 205 L 105 150 Z" fill="url(#haloGrad)"/>
+    <ellipse cx="160" cy="165" rx="10" ry="6" fill="#d0d9e5" transform="rotate(-30 160 165)"/>
+
+    <!-- Right Crown Spoke -->
+    <path d="M 370 125 L 290 180 L 320 205 L 395 150 Z" fill="url(#haloGrad)"/>
+    <ellipse cx="340" cy="165" rx="10" ry="6" fill="#d0d9e5" transform="rotate(30 340 165)"/>
+
+    <!-- Connecting Arch -->
+    <path d="M 135 180 A 130 130 0 0 1 365 180" fill="none" stroke="url(#haloGrad)" stroke-width="18"/>
+  </g>
+
+  <!-- Side Wings -->
+  <!-- Left Wing -->
+  <path d="M 120 300 Q 30 300 20 340 Q 60 380 125 360 Q 70 340 110 320 Z" 
+        fill="#c2cfde" stroke="#2d2630" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Right Wing -->
+  <path d="M 380 300 Q 470 300 480 340 Q 440 380 375 360 Q 430 340 390 320 Z" 
+        fill="#c2cfde" stroke="#2d2630" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- Hands / Paws resting on table -->
+  <ellipse cx="145" cy="375" rx="30" ry="22" fill="#fff5ee" stroke="#2d2630" stroke-width="5"/>
+  <ellipse cx="355" cy="375" rx="30" ry="22" fill="#fff5ee" stroke="#2d2630" stroke-width="5"/>
+
+  <!-- Fluffy Chibi Hair (Head Face Down) -->
+  <g stroke="#2d2630" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Main Back Hair Mass -->
+    <path d="M 130 320 Q 90 230 170 140 Q 250 90 330 140 Q 410 230 370 320 Q 340 385 250 385 Q 160 385 130 320 Z" 
+          fill="url(#hairGrad)" filter="url(#shadow)"/>
+
+    <!-- Layered Bangs & Tufts -->
+    <path d="M 180 170 Q 250 250 160 330" fill="none"/>
+    <path d="M 320 170 Q 250 250 340 330" fill="none"/>
+    <path d="M 210 140 Q 250 210 210 350" fill="none"/>
+    <path d="M 290 140 Q 250 210 290 350" fill="none"/>
+    <path d="M 250 120 Q 220 220 250 380" fill="none"/>
+
+    <!-- Side Fluffs -->
+    <path d="M 130 260 Q 90 290 110 330 Q 140 310 150 290 Z" fill="#b0bece"/>
+    <path d="M 370 260 Q 410 290 390 330 Q 360 310 350 290 Z" fill="#b0bece"/>
+  </g>
+
+  <!-- MON Calendar Slip on Head -->
+  <g transform="rotate(-18 250 140)" filter="url(#shadow)" stroke="#2d2630" stroke-width="4" stroke-linejoin="round">
+    <!-- Paper base -->
+    <rect x="185" y="100" width="130" height="90" rx="8" fill="#e8eaed"/>
+    <!-- Red Header Bar -->
+    <path d="M 185 108 A 8 8 0 0 1 193 100 L 307 100 A 8 8 0 0 1 315 108 L 315 130 L 185 130 Z" fill="#c93b3b"/>
+    <!-- MON Text -->
+    <text x="250" y="172" font-family="'Arial Black', sans-serif" font-weight="900" font-size="34" fill="#2d2630" text-anchor="middle" tracking="2">MON</text>
+  </g>
+
+  <!-- Stress / Discontent Lines on Right Side -->
+  <path d="M 350 220 L 345 270 M 362 225 L 357 265 M 374 232 L 369 260" 
+        stroke="#4a3e63" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 380 200 Q 400 190 390 210 T 405 220" 
+        fill="none" stroke="#4a3e63" stroke-width="3" stroke-linecap="round"/>
+</svg>

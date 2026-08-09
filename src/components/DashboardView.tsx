@@ -380,46 +380,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Belum ada data pengaduan. Klik tombol "+ INPUT BARU" untuk menambahkan.
           </div>
         ) : (
-          <table className="w-full text-left text-xs table-fixed">
-            <thead>
-              <tr className="bg-gray-100 border-b border-gray-200 text-gray-500 font-bold uppercase">
-                {renderSortHeader('keyid', 'KeyID', 'w-24')}
-                {renderSortHeader('tanggal', 'Tanggal', 'w-28')}
-                {renderSortHeader('jenis', 'Jenis', 'w-20')}
-                <th className="px-4 py-2">Pesan (Klik untuk detail)</th>
-                {renderSortHeader('pengirim', 'Pengirim', 'w-32')}
-                {renderSortHeader('tersampaikan', 'Status', 'w-24', true)}
-                <th className="w-16 px-4 py-2 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
+          <>
+            {/* Mobile & Tablet Card View (lg:hidden) */}
+            <div className="block lg:hidden divide-y divide-gray-100 p-3 space-y-3">
               {recentItems.map((item) => {
                 const isSudah = item.tersampaikan.trim().toLowerCase() === 'sudah';
-                let badgeStyle = 'bg-blue-100 text-blue-700';
-                if (item.jenis.toLowerCase() === 'kritik') badgeStyle = 'bg-red-100 text-red-700';
-                if (item.jenis.toLowerCase() === 'apresiasi') badgeStyle = 'bg-purple-100 text-purple-700';
-                if (item.jenis.toLowerCase() === 'saran') badgeStyle = 'bg-gray-100 text-gray-700';
+                let badgeStyle = 'bg-blue-100 text-blue-700 border-blue-200';
+                if (item.jenis.toLowerCase() === 'kritik') badgeStyle = 'bg-red-100 text-red-700 border-red-200';
+                if (item.jenis.toLowerCase() === 'apresiasi') badgeStyle = 'bg-purple-100 text-purple-700 border-purple-200';
+                if (item.jenis.toLowerCase() === 'saran') badgeStyle = 'bg-gray-100 text-gray-700 border-gray-200';
 
                 return (
-                  <tr 
+                  <div
                     key={item.keyid}
                     onClick={() => onOpenDetailModal(item)}
-                    className="hover:bg-blue-50 transition-colors cursor-pointer"
+                    className="bg-gray-50/70 hover:bg-blue-50/80 p-3 rounded-lg border border-gray-200 cursor-pointer transition-all space-y-2"
                   >
-                    <td className="px-4 py-2.5 font-mono font-bold text-gray-500">{item.keyid}</td>
-                    <td className="px-4 py-2.5 text-gray-600 font-medium whitespace-nowrap">{formatDateIndonesian(item.tanggal)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`${badgeStyle} px-1.5 py-0.5 rounded text-[10px] font-bold uppercase`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] font-bold text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
+                          #{item.keyid}
+                        </span>
+                        <span className="text-[11px] font-medium text-gray-500">
+                          {formatDateIndonesian(item.tanggal)}
+                        </span>
+                      </div>
+                      <span className={`${badgeStyle} border px-2 py-0.5 rounded text-[10px] font-extrabold uppercase`}>
                         {item.jenis}
                       </span>
-                    </td>
-                    <td className="px-4 py-2.5 truncate text-gray-700 italic">
+                    </div>
+
+                    <div className="text-xs font-semibold text-gray-900">
+                      {item.pengirim} <span className="text-gray-500 font-normal">({item.kelas || '-'})</span>
+                    </div>
+
+                    <p className="text-xs text-gray-700 italic line-clamp-2">
                       "{item.pesan}"
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-800 font-medium">
-                      {item.pengirim} <span className="text-gray-400">({item.kelas})</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
+                    </p>
+
+                    <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-xs">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           isSudah
@@ -427,17 +426,77 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             : 'bg-amber-100 text-amber-700 border border-amber-200'
                         }`}
                       >
-                        {isSudah ? 'SUDAH' : 'BELUM'}
+                        {isSudah ? 'SUDAH TERSAMPAIKAN' : 'BELUM TERSAMPAIKAN'}
                       </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center text-blue-600 font-bold">
-                      DETAIL
-                    </td>
-                  </tr>
+                      <span className="text-blue-600 font-bold text-[11px] flex items-center gap-0.5">
+                        Lihat Detail →
+                      </span>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Desktop Table View (hidden lg:table) */}
+            <table className="hidden lg:table w-full text-left text-xs table-fixed">
+              <thead>
+                <tr className="bg-gray-100 border-b border-gray-200 text-gray-500 font-bold uppercase">
+                  {renderSortHeader('keyid', 'KeyID', 'w-24')}
+                  {renderSortHeader('tanggal', 'Tanggal', 'w-28')}
+                  {renderSortHeader('jenis', 'Jenis', 'w-20')}
+                  <th className="px-4 py-2">Pesan (Klik untuk detail)</th>
+                  {renderSortHeader('pengirim', 'Pengirim', 'w-32')}
+                  {renderSortHeader('tersampaikan', 'Status', 'w-24', true)}
+                  <th className="w-16 px-4 py-2 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {recentItems.map((item) => {
+                  const isSudah = item.tersampaikan.trim().toLowerCase() === 'sudah';
+                  let badgeStyle = 'bg-blue-100 text-blue-700';
+                  if (item.jenis.toLowerCase() === 'kritik') badgeStyle = 'bg-red-100 text-red-700';
+                  if (item.jenis.toLowerCase() === 'apresiasi') badgeStyle = 'bg-purple-100 text-purple-700';
+                  if (item.jenis.toLowerCase() === 'saran') badgeStyle = 'bg-gray-100 text-gray-700';
+
+                  return (
+                    <tr 
+                      key={item.keyid}
+                      onClick={() => onOpenDetailModal(item)}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5 font-mono font-bold text-gray-500">{item.keyid}</td>
+                      <td className="px-4 py-2.5 text-gray-600 font-medium whitespace-nowrap">{formatDateIndonesian(item.tanggal)}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`${badgeStyle} px-1.5 py-0.5 rounded text-[10px] font-bold uppercase`}>
+                          {item.jenis}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 truncate text-gray-700 italic">
+                        "{item.pesan}"
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-800 font-medium">
+                        {item.pengirim} <span className="text-gray-400">({item.kelas})</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            isSudah
+                              ? 'bg-green-100 text-green-700 border border-green-200'
+                              : 'bg-amber-100 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {isSudah ? 'SUDAH' : 'BELUM'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-blue-600 font-bold">
+                        DETAIL
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
     </div>

@@ -47,16 +47,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScri
       <div className="bg-white border border-gray-200 rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-gray-900">
         {/* Header Branding */}
         <div className="p-6 bg-gradient-to-r from-gray-900 to-gray-800 text-white border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-600 text-white rounded-lg shadow">
-              <ShieldCheck className="w-6 h-6" />
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/10 p-1.5 rounded-2xl border border-white/25 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
+              <img src="/logo.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
-              <h2 className="text-base font-black tracking-wide uppercase text-white">
-                SI-KURIKULUM ACCESS
+              <h2 className="text-lg font-black tracking-wide uppercase text-white">
+                Paper Raft in Silver Bay
               </h2>
-              <p className="text-xs text-gray-300">
-                Sistem Pengaduan Wakil Kurikulum
+              <p className="text-xs text-gray-300 italic mt-0.5 leading-relaxed">
+                "To save live, you must first understand what they live for and what they die for. The best achieve this is through personal experience"
               </p>
             </div>
           </div>
@@ -169,7 +169,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScri
 
         {/* Footer info */}
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-[10px] text-gray-500 text-center font-mono">
-          SI-KURIKULUM System &copy; {new Date().getFullYear()} - Authenticated via GAS API
+          Paper Raft in Silver Bay &copy; {new Date().getFullYear()} - Authenticated via GAS API
         </div>
       </div>
     </div>

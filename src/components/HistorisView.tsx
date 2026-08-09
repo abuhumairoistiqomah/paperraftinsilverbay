@@ -21,7 +21,8 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Users
 } from 'lucide-react';
 
 type SortField = 'keyid' | 'tanggal' | 'jenis' | 'pengirim' | 'pihakterlibat' | 'metode' | 'tersampaikan';
@@ -397,8 +398,189 @@ export const HistorisView: React.FC<HistorisViewProps> = ({
         )}
       </div>
 
-      {/* Table Container */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      {/* Mobile & Tablet View (lg:hidden) - Cards Layout (No Side Scrolling) */}
+      <div className="block lg:hidden space-y-3">
+        {/* Mobile/Tablet Sorting Bar */}
+        <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-500 uppercase shrink-0">Urutkan:</span>
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="tanggal">Tanggal</option>
+              <option value="keyid">Key ID</option>
+              <option value="jenis">Jenis Pesan</option>
+              <option value="pengirim">Pengirim</option>
+              <option value="pihakterlibat">Pihak Terlibat</option>
+              <option value="metode">Metode</option>
+              <option value="tersampaikan">Status</option>
+            </select>
+            <button
+              onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+              className="p-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded text-xs font-bold text-gray-700 flex items-center gap-1 shrink-0"
+              title="Ubah Arah Urutan"
+            >
+              {sortDirection === 'asc' ? (
+                <>
+                  <ArrowUp className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="text-[10px]">Asc</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="text-[10px]">Desc</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div className="text-[11px] text-gray-500 font-medium text-right">
+            Menampilkan <strong className="text-blue-700 font-bold">{filteredItems.length}</strong> data
+          </div>
+        </div>
+
+        {filteredItems.length === 0 ? (
+          <div className="bg-white rounded-lg p-8 text-center text-gray-400 text-xs border border-gray-200">
+            Tidak ada data pengaduan yang cocok dengan filter.
+          </div>
+        ) : (
+          filteredItems.map((item) => {
+            const isSudah = item.tersampaikan.trim().toLowerCase() === 'sudah';
+            const truncatedPesan =
+              item.pesan.length > 80
+                ? item.pesan.substring(0, 80) + '...'
+                : item.pesan;
+
+            let badgeStyle = 'bg-blue-100 text-blue-700 border-blue-200';
+            if (item.jenis.toLowerCase() === 'kritik') badgeStyle = 'bg-red-100 text-red-700 border-red-200';
+            if (item.jenis.toLowerCase() === 'apresiasi') badgeStyle = 'bg-purple-100 text-purple-700 border-purple-200';
+            if (item.jenis.toLowerCase() === 'saran') badgeStyle = 'bg-gray-100 text-gray-700 border-gray-200';
+
+            return (
+              <div
+                key={item.keyid}
+                className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:border-blue-300 transition-all space-y-3"
+              >
+                {/* Header Row */}
+                <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-black text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                      #{item.keyid}
+                    </span>
+                    <span className="text-[11px] font-medium text-gray-500 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      {formatDateIndonesian(item.tanggal)}
+                    </span>
+                    {item.metode && (
+                      <span className="text-[10px] font-semibold text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                        {item.metode}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`${badgeStyle} border px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide shrink-0`}>
+                    {item.jenis}
+                  </span>
+                </div>
+
+                {/* Sender & Target info */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
+                  <div className="flex items-center gap-1.5 text-gray-900 font-bold">
+                    <Users className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{item.pengirim}</span>
+                    <span className="text-gray-400 font-normal">({item.kelas || '-'})</span>
+                  </div>
+                  {item.pihakterlibat && (
+                    <div className="text-[11px] text-gray-500">
+                      Ditujukan: <span className="font-semibold text-gray-700">{item.pihakterlibat}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Message Box */}
+                <div
+                  onClick={() => onOpenDetailModal(item)}
+                  className="p-3 bg-gray-50 hover:bg-blue-50/70 rounded-lg border border-gray-200/80 cursor-pointer transition-colors space-y-1 group"
+                  title="Klik untuk membaca pesan selengkapnya"
+                >
+                  <p className="text-xs text-gray-800 italic leading-relaxed group-hover:text-blue-900">
+                    "{truncatedPesan}"
+                  </p>
+                  <div className="text-[10px] text-gray-400 font-mono pt-1.5 border-t border-gray-200/50 flex justify-between items-center">
+                    <span>Topik: {item.topikumum || '-'}</span>
+                    <span className="text-blue-600 font-bold group-hover:underline">Detail →</span>
+                  </div>
+                </div>
+
+                {/* Footer Controls & Actions */}
+                <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Status:</span>
+                    <button
+                      onClick={() => onToggleTersampaikan(item)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+                        isSudah
+                          ? 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                      }`}
+                      title="Klik untuk menguji/mengubah status"
+                    >
+                      {isSudah ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                          <span>SUDAH</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>BELUM</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Action buttons with touch friendly targets */}
+                  <div className="flex items-center gap-1 font-bold text-xs">
+                    <button
+                      onClick={() => onOpenDetailModal(item)}
+                      className="px-2.5 py-1 text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-1 transition-colors"
+                      title="Lihat Detail"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Lihat</span>
+                    </button>
+
+                    <button
+                      onClick={() => onOpenEditModal(item)}
+                      className="px-2.5 py-1 text-amber-600 hover:bg-amber-50 rounded-lg flex items-center gap-1 transition-colors"
+                      title="Edit"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (confirm(`Hapus pengaduan ${item.keyid}?`)) {
+                          onDelete(item.keyid);
+                        }
+                      }}
+                      className="px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1 transition-colors"
+                      title="Hapus"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop Table View (hidden lg:block) */}
+      <div className="hidden lg:block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
