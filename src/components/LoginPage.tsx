@@ -49,7 +49,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScri
         <div className="p-6 bg-gradient-to-r from-gray-900 to-gray-800 text-white border-b border-gray-700">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/10 p-1.5 rounded-2xl border border-white/25 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
-              <img src="/logo.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              <img src="https://raw.githubusercontent.com/abuhumairoistiqomah/paperraftinsilverbay/7c0dd338838b6212a84ebbd66a2dfdba11be9893/download.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
               <h2 className="text-lg font-black tracking-wide uppercase text-white">

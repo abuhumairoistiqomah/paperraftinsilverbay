@@ -45,7 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between py-3 gap-4 border-b border-gray-700/80">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 md:w-24 md:h-24 bg-white/10 p-1.5 rounded-2xl border border-white/25 flex items-center justify-center shadow-lg shrink-0 overflow-hidden hover:scale-105 transition-transform">
-              <img src="/logo.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              <img src="https://raw.githubusercontent.com/abuhumairoistiqomah/paperraftinsilverbay/7c0dd338838b6212a84ebbd66a2dfdba11be9893/download.png" alt="Paper Raft Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
