@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { AkunItem } from '../types';
-import { StorageService, ApiService } from '../services/api';
+import { ApiService } from '../services/api';
 import { ShieldCheck, Lock, User, FileSpreadsheet, Sparkles, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 interface LoginPageProps {
   onLoginSuccess: (user: AkunItem) => void;
   onOpenScriptSetup: () => void;
+  notice?: string;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScriptSetup }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScriptSetup, notice = '' }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,7 +30,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScri
       const result = await ApiService.login(username.trim(), password);
       
       if (result.status === 'success' && result.user) {
-        StorageService.setCurrentUser(result.user);
         onLoginSuccess(result.user);
       } else {
         setErrorMsg(result.message || 'Username atau password salah.');
@@ -67,12 +67,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onOpenScri
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 space-y-1">
             <p className="font-bold flex items-center gap-1.5 text-blue-900">
               <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
-              Autentikasi Langsung Google Spreadsheet
+              Autentikasi Sesi Privat Google Apps Script
             </p>
             <p className="text-gray-700 leading-relaxed text-[11px]">
-              Akun dan password Anda terverifikasi secara aman melalui server Google Apps Script tab <code className="font-mono font-bold bg-white px-1 py-0.5 rounded border border-blue-200 text-blue-800">akun</code>.
+              Password diverifikasi sebagai hash di server. Setelah login, aplikasi memakai session token; password tidak disimpan di browser.
             </p>
           </div>
+
+
+          {notice && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 font-bold flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>{notice}</span>
+            </div>
+          )}
 
           {errorMsg && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-bold flex items-start gap-2">

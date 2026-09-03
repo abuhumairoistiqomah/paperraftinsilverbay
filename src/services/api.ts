@@ -6,15 +6,25 @@ export const DEFAULT_SCRIPT_URL =
 
 const CONFIG_KEY = 'wakil_kurikulum_script_config';
 const PENGADUAN_KEY = 'wakil_kurikulum_pengaduan_data';
-const SESSION_KEY = 'wakil_kurikulum_current_user';
+const LEGACY_SESSION_KEY = 'wakil_kurikulum_current_user';
+const AUTH_SESSION_KEY = 'wakil_kurikulum_auth_session_v3';
 const PENDING_WRITES_KEY = 'wakil_kurikulum_pending_writes_v2';
 const DRAFT_PREFIX = 'wakil_kurikulum_draft_v2:';
 const REQUEST_TIMEOUT_MS = 25000;
+const LOGIN_TIMEOUT_MS = 45000;
+
+export interface AuthSessionRecord {
+  token: string;
+  user: AkunItem;
+  expiresAt: string;
+}
 
 export interface LoginResponse {
   status: 'success' | 'error';
   message?: string;
   user: AkunItem;
+  token: string;
+  expiresAt: string;
 }
 
 export type PendingWriteAction = 'savePengaduan' | 'deletePengaduan';
@@ -50,6 +60,25 @@ export interface DeletePengaduanResult {
   pendingCount: number;
 }
 
+export class AuthRequiredError extends Error {
+  code: string;
+
+  constructor(message = 'Login diperlukan untuk melanjutkan sinkronisasi.', code = 'AUTH_REQUIRED') {
+    super(message);
+    this.name = 'AuthRequiredError';
+    this.code = code;
+  }
+}
+
+class NetworkError extends Error {
+  isNetworkError = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -59,6 +88,15 @@ function safeRandomId(prefix: string): string {
     return `${prefix}${crypto.randomUUID()}`;
   }
   return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isAuthErrorCode(code: unknown): boolean {
+  return [
+    'AUTH_REQUIRED',
+    'AUTH_EXPIRED',
+    'AUTH_REVOKED',
+    'SESSION_SCHEMA_ERROR',
+  ].includes(String(code || '').toUpperCase());
 }
 
 function notifyPendingChanged(items?: PendingWriteItem[]): void {
@@ -71,8 +109,19 @@ function notifyPendingChanged(items?: PendingWriteItem[]): void {
   );
 }
 
+function notifyAuthRequired(message?: string, code?: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('wakasek_auth_required', {
+      detail: {
+        message: message || 'Sesi login berakhir. Login kembali untuk melanjutkan sinkronisasi.',
+        code: code || 'AUTH_REQUIRED',
+      },
+    })
+  );
+}
+
 export class StorageService {
-  // Config
   static getConfig(): AppsScriptConfig {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) {
@@ -86,6 +135,7 @@ export class StorageService {
         console.error('Failed to parse config:', e);
       }
     }
+
     return {
       webAppUrl: DEFAULT_SCRIPT_URL,
       isAutoSync: true,
@@ -104,32 +154,63 @@ export class StorageService {
     return DEFAULT_SCRIPT_URL;
   }
 
-  // Session
-  static getCurrentUser(): AkunItem | null {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (raw) {
-      try {
-        const user = JSON.parse(raw);
-        if (user && user.password) delete user.password;
-        return user;
-      } catch (e) {
-        console.error('Failed to parse user session:', e);
-      }
+  // ---------------------------------------------------------------------------
+  // Auth session. Password is NEVER stored in the browser.
+  // ---------------------------------------------------------------------------
+  static getAuthSession(): AuthSessionRecord | null {
+    const raw = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed?.token || !parsed?.user || !parsed?.expiresAt) return null;
+      return parsed as AuthSessionRecord;
+    } catch (e) {
+      console.error('Failed to parse auth session:', e);
+      return null;
     }
-    return null;
   }
 
-  static setCurrentUser(user: AkunItem | null): void {
-    if (user) {
-      const { password, ...safeUser } = user as any;
-      localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
-    } else {
-      localStorage.removeItem(SESSION_KEY);
+  static setAuthSession(session: AuthSessionRecord | null): void {
+    // Remove the old pre-token login marker so an old build can never be mistaken
+    // for an authenticated session after the privacy upgrade.
+    localStorage.removeItem(LEGACY_SESSION_KEY);
+
+    if (!session) {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      return;
     }
+
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  }
+
+  static clearAuthSession(): void {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    localStorage.removeItem(LEGACY_SESSION_KEY);
+  }
+
+  static getCurrentUser(): AkunItem | null {
+    return StorageService.getAuthSession()?.user || null;
+  }
+
+  static getSessionToken(): string {
+    return String(StorageService.getAuthSession()?.token || '');
+  }
+
+  static isLocalSessionExpired(): boolean {
+    const session = StorageService.getAuthSession();
+    if (!session) return true;
+    const expiresAt = new Date(session.expiresAt).getTime();
+    return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
+  }
+
+  // Kept for older callers; user-only markers are no longer accepted as auth.
+  static setCurrentUser(user: AkunItem | null): void {
+    if (!user) StorageService.clearAuthSession();
   }
 
   static clearCurrentUser(): void {
-    localStorage.removeItem(SESSION_KEY);
+    StorageService.clearAuthSession();
   }
 
   // Local canonical view. This is the user's safety copy, NOT just a disposable server cache.
@@ -143,6 +224,7 @@ export class StorageService {
         console.error('Failed to parse local pengaduan:', e);
       }
     }
+
     localStorage.setItem(PENGADUAN_KEY, JSON.stringify(INITIAL_PENGADUAN));
     return [...INITIAL_PENGADUAN];
   }
@@ -151,7 +233,6 @@ export class StorageService {
     localStorage.setItem(PENGADUAN_KEY, JSON.stringify(items));
   }
 
-  // Pending write queue
   static getPendingWrites(): PendingWriteItem[] {
     try {
       const raw = localStorage.getItem(PENDING_WRITES_KEY);
@@ -169,7 +250,6 @@ export class StorageService {
     notifyPendingChanged(items);
   }
 
-  // Form drafts
   static getDraft(draftKey: string): LocalDraftRecord | null {
     if (!draftKey) return null;
     try {
@@ -196,27 +276,81 @@ export class StorageService {
   }
 }
 
-class NetworkError extends Error {
-  isNetworkError = true;
-  constructor(message: string) {
-    super(message);
-    this.name = 'NetworkError';
-  }
-}
-
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (err: any) {
     if (err?.name === 'AbortError' || controller.signal.aborted) {
-      throw new NetworkError(`Koneksi ke Google Apps Script melewati batas waktu ${Math.round(timeoutMs / 1000)} detik.`);
+      throw new NetworkError(
+        `Koneksi ke Google Apps Script melewati batas waktu ${Math.round(timeoutMs / 1000)} detik.`
+      );
     }
     throw new NetworkError(err?.message || 'Koneksi jaringan gagal.');
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+async function parseJsonResponse(response: Response): Promise<any> {
+  if (!response.ok) {
+    throw new NetworkError(`Google Apps Script merespons HTTP ${response.status}.`);
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    throw new NetworkError('Respons Google Apps Script bukan JSON yang valid.');
+  }
+}
+
+async function postPublic(action: string, payload: Record<string, any> = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<any> {
+  const scriptUrl = StorageService.getScriptUrl();
+  if (!scriptUrl) throw new NetworkError('URL Google Apps Script belum tersedia.');
+
+  const response = await fetchWithTimeout(
+    scriptUrl,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, ...payload }),
+    },
+    timeoutMs
+  );
+
+  return parseJsonResponse(response);
+}
+
+async function postAuthenticated(action: string, payload: Record<string, any> = {}): Promise<any> {
+  const token = StorageService.getSessionToken();
+  if (!token) {
+    const error = new AuthRequiredError('Login diperlukan untuk mengakses data privat.');
+    notifyAuthRequired(error.message, error.code);
+    throw error;
+  }
+
+  const result = await postPublic(action, { token, ...payload });
+
+  if (result?.status !== 'success') {
+    if (isAuthErrorCode(result?.code)) {
+      const error = new AuthRequiredError(
+        result?.message || 'Sesi login berakhir. Silakan login kembali.',
+        result?.code || 'AUTH_REQUIRED'
+      );
+      notifyAuthRequired(error.message, error.code);
+      throw error;
+    }
+
+    throw new Error(result?.message || 'Google Apps Script menolak permintaan.');
+  }
+
+  return result;
 }
 
 function normalizeServerRow(row: any): PengaduanItem {
@@ -259,7 +393,6 @@ function enqueuePending(action: PendingWriteAction, keyid: string, payload: any)
   const idx = queue.findIndex((item) => item.keyid === keyid);
 
   if (idx >= 0) {
-    // Latest intention wins for one logical record.
     queue[idx] = {
       ...queue[idx],
       action,
@@ -281,6 +414,7 @@ function enqueuePending(action: PendingWriteAction, keyid: string, payload: any)
     updatedAt: now,
     attempts: 0,
   };
+
   queue.push(item);
   StorageService.savePendingWrites(queue);
   return item;
@@ -289,7 +423,6 @@ function enqueuePending(action: PendingWriteAction, keyid: string, payload: any)
 function removePendingIfUnchanged(id: string, expectedUpdatedAt: string): void {
   const queue = StorageService.getPendingWrites();
   const current = queue.find((item) => item.id === id);
-  // If the user edited the same record while this request was in flight, keep the newer intent queued.
   if (current && current.updatedAt !== expectedUpdatedAt) return;
   StorageService.savePendingWrites(queue.filter((item) => item.id !== id));
 }
@@ -298,11 +431,11 @@ function markPendingError(id: string, expectedUpdatedAt: string, error: any): vo
   const queue = StorageService.getPendingWrites();
   const idx = queue.findIndex((item) => item.id === id);
   if (idx < 0 || queue[idx].updatedAt !== expectedUpdatedAt) return;
+
   queue[idx] = {
     ...queue[idx],
     attempts: (queue[idx].attempts || 0) + 1,
     lastError: String(error?.message || error || 'Sinkronisasi gagal'),
-    // Do not change updatedAt here: it is the version token for the queued user intent.
   };
   StorageService.savePendingWrites(queue);
 }
@@ -311,7 +444,6 @@ function mergeServerWithPending(serverItems: PengaduanItem[]): PengaduanItem[] {
   const map = new Map<string, PengaduanItem>();
   (serverItems || []).forEach((item) => map.set(item.keyid, item));
 
-  // Pending operations represent the user's newest intention and always win over stale server snapshots.
   StorageService.getPendingWrites()
     .slice()
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -320,6 +452,7 @@ function mergeServerWithPending(serverItems: PengaduanItem[]): PengaduanItem[] {
         map.delete(pending.keyid);
         return;
       }
+
       const item = pending.payload?.item as PengaduanItem | undefined;
       if (item) map.set(item.keyid, item);
     });
@@ -327,32 +460,14 @@ function mergeServerWithPending(serverItems: PengaduanItem[]): PengaduanItem[] {
   return Array.from(map.values());
 }
 
-let flushPromise: Promise<{ syncedCount: number; remainingCount: number; failedCount: number }> | null = null;
+let flushPromise: Promise<{
+  syncedCount: number;
+  remainingCount: number;
+  failedCount: number;
+}> | null = null;
 
-async function postRaw(action: PendingWriteAction, payload: any): Promise<any> {
-  const scriptUrl = StorageService.getScriptUrl();
-  if (!scriptUrl) throw new NetworkError('URL Google Apps Script belum tersedia.');
-
-  const res = await fetchWithTimeout(scriptUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload }),
-  });
-
-  if (!res.ok) throw new NetworkError(`Google Apps Script merespons HTTP ${res.status}.`);
-
-  let result: any;
-  try {
-    result = await res.json();
-  } catch {
-    throw new NetworkError('Respons Google Apps Script bukan JSON yang valid.');
-  }
-
-  if (result?.status !== 'success') {
-    throw new Error(result?.message || 'Google Apps Script menolak perubahan data.');
-  }
-
-  return result;
+async function postPending(pending: PendingWriteItem): Promise<any> {
+  return postAuthenticated(pending.action, pending.payload);
 }
 
 export class ApiService {
@@ -364,7 +479,85 @@ export class ApiService {
     return StorageService.getPendingWrites().length;
   }
 
-  static async flushPendingWrites(): Promise<{ syncedCount: number; remainingCount: number; failedCount: number }> {
+  static hasUsableLocalSession(): boolean {
+    return Boolean(StorageService.getAuthSession()) && !StorageService.isLocalSessionExpired();
+  }
+
+  static async login(username: string, password: string): Promise<LoginResponse> {
+    try {
+      const result = await postPublic(
+        'login',
+        { username, password },
+        LOGIN_TIMEOUT_MS
+      );
+
+      if (result?.status !== 'success') {
+        throw new Error(result?.message || 'Username atau password salah.');
+      }
+
+      if (!result.user || !result.token || !result.expiresAt) {
+        throw new Error('Respons login tidak memiliki sesi autentikasi yang lengkap.');
+      }
+
+      const session: AuthSessionRecord = {
+        token: String(result.token),
+        user: result.user as AkunItem,
+        expiresAt: String(result.expiresAt),
+      };
+
+      StorageService.setAuthSession(session);
+      return result as LoginResponse;
+    } catch (err: any) {
+      if (err?.isNetworkError || err?.name === 'NetworkError') {
+        throw new Error('Tidak dapat terhubung ke server login. Periksa koneksi internet Anda.');
+      }
+      throw err;
+    }
+  }
+
+  static async validateSession(): Promise<AkunItem> {
+    const session = StorageService.getAuthSession();
+    if (!session) {
+      throw new AuthRequiredError('Belum ada sesi login.');
+    }
+
+    if (StorageService.isLocalSessionExpired()) {
+      StorageService.clearAuthSession();
+      throw new AuthRequiredError('Sesi lokal telah kedaluwarsa. Silakan login kembali.', 'AUTH_EXPIRED');
+    }
+
+    const result = await postAuthenticated('validateSession');
+    const nextSession: AuthSessionRecord = {
+      token: session.token,
+      user: (result.user || session.user) as AkunItem,
+      expiresAt: String(result.expiresAt || session.expiresAt),
+    };
+    StorageService.setAuthSession(nextSession);
+    return nextSession.user;
+  }
+
+  static async logout(): Promise<void> {
+    const token = StorageService.getSessionToken();
+    // Local logout is immediate. Server revocation is best-effort afterward.
+    StorageService.clearAuthSession();
+
+    if (!token) return;
+
+    try {
+      const result = await postPublic('logout', { token });
+      if (result?.status !== 'success') {
+        console.warn('[Auth] Server logout response:', result);
+      }
+    } catch (err) {
+      console.warn('[Auth] Server logout could not be confirmed:', err);
+    }
+  }
+
+  static async flushPendingWrites(): Promise<{
+    syncedCount: number;
+    remainingCount: number;
+    failedCount: number;
+  }> {
     if (flushPromise) return flushPromise;
 
     flushPromise = (async () => {
@@ -374,17 +567,21 @@ export class ApiService {
 
       for (const pending of snapshot) {
         try {
-          await postRaw(pending.action, pending.payload);
+          await postPending(pending);
           removePendingIfUnchanged(pending.id, pending.updatedAt);
           syncedCount++;
         } catch (err: any) {
+          if (err instanceof AuthRequiredError || err?.name === 'AuthRequiredError') {
+            // Keep the queue exactly as-is. Re-login will continue from here.
+            notifyAuthRequired(err.message, err.code);
+            throw err;
+          }
+
           markPendingError(pending.id, pending.updatedAt, err);
           failedCount++;
           console.warn(`[Pending Sync] ${pending.action} ${pending.keyid} gagal:`, err);
 
-          // Network failure: later records are unlikely to work either; stop and retry later.
           if (err?.isNetworkError || err?.name === 'NetworkError') break;
-          // Server validation error: keep it queued, but allow unrelated records to continue.
         }
       }
 
@@ -393,7 +590,10 @@ export class ApiService {
         const config = StorageService.getConfig();
         StorageService.saveConfig({
           ...config,
-          lastSynced: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          lastSynced: new Date().toLocaleTimeString('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
         });
       }
 
@@ -407,67 +607,56 @@ export class ApiService {
     }
   }
 
-  // Test connection to Google Apps Script Web App
   static async testConnection(url: string): Promise<{ success: boolean; message: string }> {
     if (!url || !url.trim().startsWith('http')) {
-      return { success: false, message: 'URL Google Apps Script tidak valid. Harus dimulai dengan http:// atau https://' };
+      return {
+        success: false,
+        message: 'URL Google Apps Script tidak valid. Harus dimulai dengan http:// atau https://',
+      };
     }
+
     try {
       const cleanUrl = url.trim();
       const testUrl = cleanUrl.includes('?') ? `${cleanUrl}&action=ping` : `${cleanUrl}?action=ping`;
       const res = await fetchWithTimeout(testUrl, { method: 'GET', mode: 'cors' });
-      if (!res.ok) return { success: false, message: `Server merespon dengan status ${res.status}` };
-      const json = await res.json();
-      if (json.status === 'success') return { success: true, message: json.message || 'Koneksi ke Google Sheet berhasil!' };
-      return { success: false, message: json.message || 'Respon Google Sheet menunjukkan error.' };
-    } catch (err: any) {
-      return { success: false, message: `Gagal terhubung ke Google Apps Script: ${err.message || 'Network error / CORS restrictions'}` };
-    }
-  }
+      const json = await parseJsonResponse(res);
 
-  // Server-side login validation via doPost()
-  static async login(username: string, password: string): Promise<LoginResponse> {
-    const scriptUrl = StorageService.getScriptUrl();
-    if (!scriptUrl) throw new Error('URL Google Apps Script belum tersedia.');
-
-    try {
-      const response = await fetchWithTimeout(scriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'login', username, password }),
-      }, 45000);
-
-      if (!response.ok) throw new Error('Tidak dapat terhubung ke server login.');
-      const result = await response.json();
-      if (result.status !== 'success') throw new Error(result.message || 'Username atau password salah.');
-      if (!result.user) throw new Error('Respons login tidak memiliki data pengguna.');
-      return result as LoginResponse;
-    } catch (err: any) {
-      if (err?.isNetworkError || err?.name === 'NetworkError') {
-        throw new Error('Tidak dapat terhubung ke server login. Periksa koneksi internet Anda.');
+      if (json.status === 'success') {
+        return {
+          success: true,
+          message: json.message || 'Koneksi Google Apps Script berhasil. Endpoint data tetap privat.',
+        };
       }
-      throw err;
+
+      return {
+        success: false,
+        message: json.message || 'Respons Google Apps Script menunjukkan error.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Gagal terhubung ke Google Apps Script: ${err.message || 'Network error / CORS restrictions'}`,
+      };
     }
   }
 
-  // Server refresh is now SAFE: pending local intent is merged on top of the server snapshot.
-  static async fetchAllData(): Promise<{ pengaduan: PengaduanItem[]; isOnline: boolean; error?: string; pendingCount: number }> {
+  static async fetchAllData(): Promise<{
+    pengaduan: PengaduanItem[];
+    isOnline: boolean;
+    error?: string;
+    pendingCount: number;
+  }> {
     const localPengaduan = StorageService.getLocalPengaduan();
-    const scriptUrl = StorageService.getScriptUrl();
 
-    // Best effort: push local queue first, so a following GET is less likely to be stale.
     try {
       await this.flushPendingWrites();
-    } catch (e) {
-      console.warn('[Pending Sync] Pre-fetch flush failed:', e);
+    } catch (err: any) {
+      if (err instanceof AuthRequiredError || err?.name === 'AuthRequiredError') throw err;
+      console.warn('[Pending Sync] Pre-fetch flush failed:', err);
     }
 
     try {
-      const res = await fetchWithTimeout(scriptUrl, { method: 'GET' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = await res.json();
-      if (result.status !== 'success') throw new Error(result.message || 'Error dari script');
-
+      const result = await postAuthenticated('getAllData');
       const serverItems: PengaduanItem[] = Array.isArray(result.data)
         ? result.data.map(normalizeServerRow)
         : [];
@@ -478,7 +667,10 @@ export class ApiService {
       const config = StorageService.getConfig();
       StorageService.saveConfig({
         ...config,
-        lastSynced: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        lastSynced: new Date().toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
       });
 
       return {
@@ -487,28 +679,45 @@ export class ApiService {
         pendingCount: this.getPendingCount(),
       };
     } catch (err: any) {
-      console.warn('Using protected local storage:', err);
-      return {
-        pengaduan: localPengaduan,
-        isOnline: false,
-        pendingCount: this.getPendingCount(),
-        error: `Google Sheet belum dapat dijangkau (${err.message}). Data lokal tetap aman.`,
-      };
+      if (err instanceof AuthRequiredError || err?.name === 'AuthRequiredError') throw err;
+
+      if (err?.isNetworkError || err?.name === 'NetworkError') {
+        console.warn('Using protected local storage:', err);
+        return {
+          pengaduan: localPengaduan,
+          isOnline: false,
+          pendingCount: this.getPendingCount(),
+          error: `Google Sheet belum dapat dijangkau (${err.message}). Data lokal tetap aman.`,
+        };
+      }
+
+      throw err;
     }
   }
 
   private static triggerBackgroundSync(): void {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    if (!StorageService.getSessionToken()) {
+      notifyAuthRequired(
+        'Perubahan sudah aman di perangkat. Login kembali untuk melanjutkan sinkronisasi.',
+        'AUTH_REQUIRED'
+      );
+      return;
+    }
+
     void this.flushPendingWrites()
       .then(() => {
-        // A second mutation may have arrived while the first queue snapshot was in flight.
         if (this.getPendingCount() > 0) return this.flushPendingWrites();
         return undefined;
       })
-      .catch((err) => console.warn('[Pending Sync] Background sync tertunda:', err));
+      .catch((err) => {
+        if (err instanceof AuthRequiredError || err?.name === 'AuthRequiredError') return;
+        console.warn('[Pending Sync] Background sync tertunda:', err);
+      });
   }
 
-  // Save means "safe now". It NEVER waits for the internet.
+  // Save means "safe now". It NEVER waits for internet or session refresh.
   static async savePengaduan(item: PengaduanItem): Promise<SavePengaduanResult> {
     upsertLocal(item);
     enqueuePending('savePengaduan', item.keyid, { item });
@@ -519,11 +728,10 @@ export class ApiService {
       item,
       synced: false,
       pendingCount: this.getPendingCount(),
-      message: 'Data sudah aman tersimpan di perangkat. Sinkronisasi Google Sheet berjalan di latar belakang.',
+      message: 'Data sudah aman tersimpan di perangkat. Sinkronisasi terenkripsi-sesi berjalan di latar belakang.',
     };
   }
 
-  // Delete is also immediate/offline-first. The tombstone prevents stale server data from resurrecting it.
   static async deletePengaduan(keyid: string): Promise<DeletePengaduanResult> {
     deleteLocal(keyid);
     enqueuePending('deletePengaduan', keyid, { keyid });
@@ -533,11 +741,10 @@ export class ApiService {
       success: true,
       synced: false,
       pendingCount: this.getPendingCount(),
-      message: 'Data langsung dihapus dari perangkat. Penghapusan Google Sheet berjalan di latar belakang.',
+      message: 'Data langsung dihapus dari perangkat. Penghapusan server berjalan di latar belakang.',
     };
   }
 
-  // Human-readable ID. For this private single-user app it remains simple and familiar.
   static generateNextKeyId(items: PengaduanItem[]): string {
     const year = new Date().getFullYear();
     const prefix = `PENG-${year}-`;
