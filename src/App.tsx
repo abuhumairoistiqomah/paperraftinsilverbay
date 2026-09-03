@@ -9,13 +9,16 @@ import { AnalisisView } from './components/AnalisisView';
 import { ComplaintFormModal } from './components/ComplaintFormModal';
 import { ComplaintDetailModal } from './components/ComplaintDetailModal';
 import { AppsScriptGuideModal } from './components/AppsScriptGuideModal';
-import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AkunItem | null>(() => StorageService.getCurrentUser());
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
-  const [pengaduanItems, setPengaduanItems] = useState<PengaduanItem[]>([]);
-  const [isOnline, setIsOnline] = useState<boolean>(false);
+
+  // Local data is shown immediately. Network refresh is reconciliation, never the only copy.
+  const [pengaduanItems, setPengaduanItems] = useState<PengaduanItem[]>(() => StorageService.getLocalPengaduan());
+  const [pendingCount, setPendingCount] = useState<number>(() => ApiService.getPendingCount());
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -25,36 +28,70 @@ export default function App() {
   const [detailItem, setDetailItem] = useState<PengaduanItem | null>(null);
   const [isScriptGuideOpen, setIsScriptGuideOpen] = useState(false);
 
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setToastMsg({ text, type });
-    setTimeout(() => {
-      setToastMsg(null);
-    }, 3500);
-  };
+    window.setTimeout(() => setToastMsg(null), 3500);
+  }, []);
 
-  // Load data function
-  const loadData = useCallback(async () => {
+  // Safe reconciliation: ApiService merges pending local writes on top of the server snapshot.
+  const loadData = useCallback(async (silent = false) => {
     setIsSyncing(true);
     try {
       const res = await ApiService.fetchAllData();
       setPengaduanItems(res.pengaduan);
+      setPendingCount(res.pendingCount);
       setIsOnline(res.isOnline);
-      if (res.error) {
-        showToast(res.error, 'error');
-      }
+      if (res.error && !silent) showToast(res.error, 'error');
     } catch (err: any) {
       console.error('Failed to load data:', err);
-      showToast('Gagal memuat data dari database', 'error');
+      // Never blank the UI on network failure; keep the protected local view.
+      setPengaduanItems(StorageService.getLocalPengaduan());
+      setPendingCount(ApiService.getPendingCount());
+      setIsOnline(false);
+      if (!silent) showToast('Sinkronisasi gagal. Data lokal tetap aman.', 'error');
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
-    if (currentUser) {
-      loadData();
-    }
+    if (currentUser) void loadData(true);
   }, [currentUser, loadData]);
+
+  // Keep the UI badge in sync with local queue mutations.
+  useEffect(() => {
+    const handlePendingChange = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      setPendingCount(Number(detail?.count ?? ApiService.getPendingCount()));
+      setPengaduanItems(StorageService.getLocalPengaduan());
+    };
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (currentUser) void loadData(true);
+    };
+
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('wakasek_pending_sync_change', handlePendingChange as EventListener);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('wakasek_pending_sync_change', handlePendingChange as EventListener);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [currentUser, loadData]);
+
+  // If there is unfinished work, quietly retry in the background every 30 seconds.
+  useEffect(() => {
+    if (!currentUser || pendingCount === 0) return;
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) void loadData(true);
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [currentUser, pendingCount, loadData]);
 
   const handleLoginSuccess = (user: AkunItem) => {
     setCurrentUser(user);
@@ -67,49 +104,36 @@ export default function App() {
     showToast('Berhasil keluar dari sistem.');
   };
 
-  // Open Form Modal for NEW item
   const handleOpenNewModal = () => {
     setEditItem(null);
     setIsFormModalOpen(true);
   };
 
-  // Open Form Modal for EDIT item
   const handleOpenEditModal = (item: PengaduanItem) => {
     setEditItem(item);
     setIsFormModalOpen(true);
   };
 
-  // Open Detail Modal
-  const handleOpenDetailModal = (item: PengaduanItem) => {
-    setDetailItem(item);
-  };
+  const handleOpenDetailModal = (item: PengaduanItem) => setDetailItem(item);
 
-  // Save Item (Create or Update)
-  const handleSaveItem = async (item: PengaduanItem) => {
+  // No loadData() after save. The local write is the immediate source of truth.
+  const handleSaveItem = async (item: PengaduanItem): Promise<void> => {
     const res = await ApiService.savePengaduan(item);
-    if (res.success) {
-      showToast(res.message);
-      loadData();
-    } else {
-      showToast(res.message, 'error');
-    }
+    setPengaduanItems(StorageService.getLocalPengaduan());
+    setPendingCount(res.pendingCount);
+    if (res.synced) setIsOnline(true);
+    showToast(res.message, 'success');
   };
 
-  // Delete Item
+  // Pending delete is a tombstone, so a stale GET cannot resurrect the deleted record.
   const handleDeleteItem = async (keyid: string) => {
     const res = await ApiService.deletePengaduan(keyid);
-    if (res.success) {
-      showToast(res.message);
-      if (detailItem && detailItem.keyid === keyid) {
-        setDetailItem(null);
-      }
-      loadData();
-    } else {
-      showToast(res.message, 'error');
-    }
+    setPengaduanItems(StorageService.getLocalPengaduan());
+    setPendingCount(res.pendingCount);
+    if (detailItem?.keyid === keyid) setDetailItem(null);
+    showToast(res.message, 'success');
   };
 
-  // Toggle Status "Tersampaikan"
   const handleToggleTersampaikan = async (item: PengaduanItem) => {
     const isCurrentlySudah = item.tersampaikan.trim().toLowerCase() === 'sudah';
     const newStatus = isCurrentlySudah ? 'Belum' : 'Sudah';
@@ -121,16 +145,19 @@ export default function App() {
     };
 
     const res = await ApiService.savePengaduan(updated);
-    if (res.success) {
-      showToast(`Status ${item.keyid} diubah menjadi "${newStatus}"`);
-      if (detailItem && detailItem.keyid === item.keyid) {
-        setDetailItem(updated);
-      }
-      loadData();
-    }
+    setPengaduanItems(StorageService.getLocalPengaduan());
+    setPendingCount(res.pendingCount);
+    if (detailItem?.keyid === item.keyid) setDetailItem(updated);
+    showToast(
+      res.synced
+        ? `Status ${item.keyid} diubah menjadi "${newStatus}" dan tersinkron.`
+        : `Status ${item.keyid} aman di perangkat; sinkronisasi berjalan di latar belakang.`,
+      'success'
+    );
   };
 
-  // Render Login Page if not logged in
+  const handleManualSync = () => void loadData(false);
+
   if (!currentUser) {
     return (
       <>
@@ -141,7 +168,7 @@ export default function App() {
         <AppsScriptGuideModal
           isOpen={isScriptGuideOpen}
           onClose={() => setIsScriptGuideOpen(false)}
-          onConfigUpdated={loadData}
+          onConfigUpdated={() => void loadData(false)}
         />
       </>
     );
@@ -149,7 +176,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] text-gray-900 font-sans selection:bg-blue-600 selection:text-white">
-      {/* Navigation Header */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -158,11 +184,12 @@ export default function App() {
         onOpenNewModal={handleOpenNewModal}
         onOpenAppsScriptGuide={() => setIsScriptGuideOpen(true)}
         isOnline={isOnline}
-        onSync={loadData}
+        pendingCount={pendingCount}
+        lastSynced={StorageService.getConfig().lastSynced}
+        onSync={handleManualSync}
         isSyncing={isSyncing}
       />
 
-      {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         {activeTab === 'dashboard' && (
           <DashboardView
@@ -195,27 +222,25 @@ export default function App() {
         )}
       </main>
 
-      {/* Floating Toast Notification */}
       {toastMsg && (
         <div className="fixed bottom-5 right-5 z-50 animate-bounce">
           <div
             className={`px-4 py-3 rounded-lg shadow-xl border text-xs font-bold flex items-center gap-2.5 ${
               toastMsg.type === 'success'
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                : 'bg-rose-50 text-rose-800 border-rose-300'
+                : 'bg-amber-50 text-amber-900 border-amber-300'
             }`}
           >
             {toastMsg.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
             )}
             <span>{toastMsg.text}</span>
           </div>
         </div>
       )}
 
-      {/* Modals */}
       <ComplaintFormModal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
@@ -234,7 +259,7 @@ export default function App() {
       <AppsScriptGuideModal
         isOpen={isScriptGuideOpen}
         onClose={() => setIsScriptGuideOpen(false)}
-        onConfigUpdated={loadData}
+        onConfigUpdated={() => void loadData(false)}
       />
     </div>
   );

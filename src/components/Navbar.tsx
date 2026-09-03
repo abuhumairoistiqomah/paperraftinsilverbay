@@ -21,6 +21,7 @@ interface NavbarProps {
   onOpenNewModal: () => void;
   onOpenAppsScriptGuide: () => void;
   isOnline: boolean;
+  pendingCount?: number;
   lastSynced?: string;
   onSync: () => void;
   isSyncing: boolean;
@@ -34,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenNewModal,
   onOpenAppsScriptGuide,
   isOnline,
+  pendingCount = 0,
   lastSynced,
   onSync,
   isSyncing,
@@ -67,21 +69,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div 
               onClick={onOpenAppsScriptGuide}
               className={`cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded font-mono text-[11px] font-semibold border transition-all ${
-                isOnline 
+                pendingCount > 0
+                  ? 'bg-amber-950/60 text-amber-300 border-amber-700 hover:bg-amber-900/60'
+                  : isOnline 
                   ? 'bg-green-950/60 text-green-400 border-green-700 hover:bg-green-900/60' 
-                  : 'bg-amber-950/60 text-amber-400 border-amber-700 hover:bg-amber-900/60'
+                  : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'
               }`}
               title="Klik untuk pengaturan integrasi Google Sheet"
             >
-              {isOnline ? (
+              {pendingCount > 0 ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>⚠ {pendingCount} perubahan aman lokal, belum tersinkron</span>
+                </>
+              ) : isOnline ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                  <span>● Sheet Terhubung (tab: data)</span>
+                  <span>● Semua data tersinkron</span>
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>● Mode Lokal (Demo)</span>
+                  <AlertTriangle className="w-3.5 h-3.5 text-slate-400" />
+                  <span>● Offline • data lokal aman</span>
                 </>
               )}
             </div>
@@ -91,10 +100,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onSync}
               disabled={isSyncing}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded font-medium border border-gray-600 transition-colors disabled:opacity-50 text-xs"
-              title="SINKRONKAN DATA TERBARU"
+              title={pendingCount > 0 ? `Sinkronkan ${pendingCount} perubahan tertunda` : 'Sinkronkan data terbaru'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-400' : ''}`} />
-              <span className="hidden sm:inline">{isSyncing ? 'Sinkron...' : 'Refresh'}</span>
+              <span className="hidden sm:inline">{isSyncing ? 'Sinkron...' : pendingCount > 0 ? `Sinkronkan (${pendingCount})` : 'Refresh'}</span>
             </button>
 
             {/* Prominent "+ INPUT BARU" Button */}

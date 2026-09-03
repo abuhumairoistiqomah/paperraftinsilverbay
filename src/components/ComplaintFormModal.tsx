@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PengaduanItem } from '../types';
-import { ApiService } from '../services/api';
-import { X, Save, Sparkles, Hash, Calendar, FileText, Tag, User, Users, GraduationCap, Phone, CheckCircle2, MessageSquare, Clock } from 'lucide-react';
+import { ApiService, StorageService } from '../services/api';
+import { X, Save, Sparkles, Hash, Calendar, FileText, Tag, User, Users, GraduationCap, Phone, CheckCircle2, MessageSquare, Clock, Cloud, Trash2 } from 'lucide-react';
 
 interface ComplaintFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (item: PengaduanItem) => void;
+  onSave: (item: PengaduanItem) => void | Promise<void>;
   editItem?: PengaduanItem | null;
   allItems: PengaduanItem[];
 }
@@ -18,8 +18,8 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
   editItem,
   allItems,
 }) => {
-  const [formData, setFormData] = useState<PengaduanItem>({
-    keyid: '',
+  const createBlankItem = (keyid: string): PengaduanItem => ({
+    keyid,
     tanggal: new Date().toISOString().split('T')[0],
     pesan: '',
     jenis: 'Masukan',
@@ -29,40 +29,102 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
     metode: 'Tatap Muka',
     topikumum: '',
     tersampaikan: 'Belum',
-    forum: '',
+    forum: 'Tatap Muka Direct',
     respon: '',
     tanggaldisampaikan: '',
-    updateterakhir: '',
+    updateterakhir: 'Baru Diterima',
   });
 
+  const [formData, setFormData] = useState<PengaduanItem>(() => createBlankItem(''));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string>('');
+  const initialSnapshotRef = useRef<string>('');
 
+  const draftKey = useMemo(
+    () => (editItem?.keyid ? `edit:${editItem.keyid}` : 'new'),
+    [editItem?.keyid]
+  );
+
+  // IMPORTANT: initialize only when the modal opens or switches to another edit record.
+  // allItems is intentionally NOT a dependency, so background refresh cannot wipe what is being typed.
   useEffect(() => {
-    if (editItem) {
-      setFormData({ ...editItem });
-    } else {
-      // Auto-generate keyid for new entry
-      const autoKeyId = ApiService.generateNextKeyId(allItems);
-      setFormData({
-        keyid: autoKeyId,
-        tanggal: new Date().toISOString().split('T')[0],
-        pesan: '',
-        jenis: 'Masukan',
-        pengirim: 'Guru',
-        pihakterlibat: '',
-        kelas: '',
-        metode: 'Tatap Muka',
-        topikumum: '',
-        tersampaikan: 'Belum',
-        forum: 'Tatap Muka Direct',
-        respon: '',
-        tanggaldisampaikan: '',
-        updateterakhir: 'Baru Diterima',
-      });
+    if (!isOpen) {
+      setDraftReady(false);
+      return;
     }
-  }, [editItem, isOpen, allItems]);
+
+    setDraftReady(false);
+    const base = editItem
+      ? { ...editItem }
+      : createBlankItem(ApiService.generateNextKeyId(allItems));
+
+    const storedDraft = StorageService.getDraft(draftKey);
+    initialSnapshotRef.current = JSON.stringify(base);
+
+    if (storedDraft?.data) {
+      setFormData({ ...storedDraft.data });
+      setDraftRestored(true);
+      setDraftSavedAt(storedDraft.updatedAt);
+    } else {
+      setFormData(base);
+      setDraftRestored(false);
+      setDraftSavedAt('');
+    }
+
+    setDraftReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editItem?.keyid, draftKey]);
+
+  const isDirty = useMemo(
+    () => draftReady && JSON.stringify(formData) !== initialSnapshotRef.current,
+    [draftReady, formData]
+  );
+
+  const persistDraftNow = () => {
+    if (!draftReady || !isDirty) return;
+    StorageService.saveDraft(draftKey, formData);
+    setDraftSavedAt(new Date().toISOString());
+  };
+
+  // Autosave narrative changes locally. The debounce keeps typing smooth while still making data loss very unlikely.
+  useEffect(() => {
+    if (!isOpen || !draftReady || !isDirty) return;
+    const timer = window.setTimeout(() => {
+      StorageService.saveDraft(draftKey, formData);
+      setDraftSavedAt(new Date().toISOString());
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, draftReady, isDirty, draftKey, formData]);
+
+  // Browser refresh/close during the debounce window still gets a synchronous final draft write.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleBeforeUnload = () => {
+      if (draftReady && isDirty) StorageService.saveDraft(draftKey, formData);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isOpen, draftReady, isDirty, draftKey, formData]);
 
   if (!isOpen) return null;
+
+  const handleSafeClose = () => {
+    persistDraftNow();
+    onClose();
+  };
+
+  const handleDiscardDraft = () => {
+    StorageService.clearDraft(draftKey);
+    const base = editItem
+      ? { ...editItem }
+      : createBlankItem(ApiService.generateNextKeyId(allItems));
+    initialSnapshotRef.current = JSON.stringify(base);
+    setFormData(base);
+    setDraftRestored(false);
+    setDraftSavedAt('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,9 +134,16 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
     }
     setIsSubmitting(true);
     try {
+      // onSave is offline-first: once this resolves, the record is already safe in local storage.
       await onSave(formData);
+      StorageService.clearDraft(draftKey);
+      initialSnapshotRef.current = JSON.stringify(formData);
+      setDraftRestored(false);
+      setDraftSavedAt('');
       onClose();
     } catch (err: any) {
+      // Preserve the exact latest form before showing an error.
+      StorageService.saveDraft(draftKey, formData);
       alert('Gagal menyimpan data: ' + err.message);
     } finally {
       setIsSubmitting(false);
@@ -101,7 +170,7 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleSafeClose}
             className="p-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors"
           >
             <X className="w-5 h-5" />
@@ -110,6 +179,30 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+          {(isDirty || draftRestored) && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] text-amber-900">
+              <div className="flex items-start gap-2">
+                <Cloud className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-black">
+                    {draftRestored ? 'Draft lokal dipulihkan.' : 'Draft otomatis tersimpan di perangkat.'}
+                  </p>
+                  <p className="text-amber-800/80">
+                    Menutup form atau refresh browser tidak akan menghapus tulisan ini.
+                    {draftSavedAt ? ` Terakhir diamankan ${new Date(draftSavedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded border border-amber-300 bg-white hover:bg-amber-100 font-bold text-amber-800 shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Buang Draft
+              </button>
+            </div>
+          )}
           {/* Section 1: Identitas & Waktu Pesan */}
           <div className="space-y-2.5">
             <h4 className="text-xs font-black text-gray-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-200 pb-1">
@@ -361,7 +454,7 @@ export const ComplaintFormModal: React.FC<ComplaintFormModalProps> = ({
           <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded border border-gray-300 transition-colors"
             >
               BATAL
